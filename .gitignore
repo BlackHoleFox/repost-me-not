@@ -1,0 +1,10 @@
+/target
+
+# Configs
+.env
+
+# Bot data
+storage/
+
+# Misc
+Notes.txt

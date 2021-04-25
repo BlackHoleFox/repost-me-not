@@ -1,0 +1,33 @@
+[package]
+name = "repost-me-not"
+version = "0.1.0"
+authors = ["BlackHoleFox <blackholefoxdev@gmail.com>"]
+edition = "2018"
+license = "MIT OR Apache-2.0"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+image = { version = "0.23", default-features = false, features = ["png", "jpeg", "gif", "webp"]}
+img_hash = { git = "https://github.com/BlackHoleFox/img_hash.git", branch = "from-bytes-no-base64" }
+dotenv = { version = "0.15", default-features = false }
+
+hyper = { version = "0.14", default-features = false, features = ["client", "http2", "runtime"] }
+hyper-rustls = { version = "0.22", default-features = false, features = ["native-tokio"] }
+tokio = { version = "1.5", features = ["rt-multi-thread", "macros", "time"] }
+tokio-stream = "0.1"
+twilight-cache-inmemory = "0.3"
+twilight-gateway = { version = "0.3", default-features = false, features = ["rustls", "simd-zlib"] } 
+twilight-http = "0.3"
+twilight-model = "0.3"
+twilight-standby = "0.3"
+
+sled = "0.34"
+rkyv = "0.5"
+
+[dev-dependencies]
+rkyv = { version = "0.5", features = ["validation"] }
+bytecheck = "0.4"
+
+[profile.release]
+lto = true
