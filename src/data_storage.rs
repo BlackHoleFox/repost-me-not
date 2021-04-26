@@ -71,6 +71,7 @@ impl Data {
             .path(db_path)
             .open()
             .map_err(DatabaseError::Initalizing)?;
+
         #[cfg(test)]
         let db = {
             let mut config = sled::Config::new().temporary(true);
@@ -196,7 +197,7 @@ impl Data {
             let image = image
                 .deserialize(&mut deserializer)
                 .expect("deserialization can never fail");
-            println!("It took {}ms to deserialize", start.elapsed().as_millis());
+            tracing::trace!("It took {}ms to deserialize", start.elapsed().as_millis());
 
             return Ok(PreviouslySeen::Yes { image, times_seen });
         }
@@ -244,7 +245,7 @@ impl Data {
                 let image = image
                     .deserialize(&mut deserializer)
                     .expect("deserialization can never fail"); // reuturns rkyv::Unreachable
-                println!("It took {}ms to deserialize", start.elapsed().as_millis());
+                tracing::trace!("It took {}ms to deserialize", start.elapsed().as_millis());
 
                 return Ok(PreviouslySeen::Yes { image, times_seen });
             }
