@@ -25,7 +25,7 @@ use twilight_model::{
         message::Message,
     },
     gateway::{payload::MessageCreate, Intents},
-    id::{ChannelId, MessageId},
+    id::{ChannelId, GuildId, MessageId},
 };
 
 #[tokio::main]
@@ -84,7 +84,7 @@ async fn main() {
         if let Event::MessageCreate(msg) = event {
             tokio::spawn(async move {
                 if let Err(e) = handle_message(msg, context).await {
-                    eprint!("Error handling a message: {:?}", e);
+                    tracing::error!("Error handling a message: {:?}", e);
                 }
             });
         }
@@ -96,7 +96,14 @@ async fn handle_message(message: Box<MessageCreate>, context: bot::Context) -> R
         let image = context.download_image(url).await?;
         if let PreviouslySeen::Yes { image, times_seen } = save_image(&context, image, &message)? {
             if !image.ignored {
-                dispatch_repost_reply(&context, &image, times_seen, message.channel_id).await?;
+                dispatch_repost_reply(
+                    &context,
+                    &image,
+                    times_seen,
+                    message.channel_id,
+                    message.guild_id.ok_or(Error::UnsupportedChannelConfig)?,
+                )
+                .await?;
                 return Ok(());
             }
         }
@@ -177,6 +184,7 @@ async fn dispatch_repost_reply(
     previous: &SeenImage,
     times_seen: u64,
     channel_id: ChannelId,
+    guild_id: GuildId,
 ) -> Result<(), Error> {
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -185,19 +193,30 @@ async fn dispatch_repost_reply(
 
     let hours_ago = difference.as_secs() / 3600;
 
-    let reply = format!("Hey, {} already posted that here {} hours ago. I've seen it {} times now. Try harder next time <:niko:765033287357431829>", 
+    let message = format!(
+        "Hey, {} already posted that here {} hours ago. I've seen it {} times now. Try harder next time <:niko:765033287357431829>", 
         previous.author,
         hours_ago,
-        times_seen,
+        times_seen
     );
 
-    context
-        .send_message(
-            reply,
-            channel_id,
-            Some(MessageId(previous.original_message_id)),
-        )
-        .await?;
+    // Check if we can use replies.
+    if channel_id.0 == previous.channel_id {
+        context
+            .send_message(
+                message,
+                channel_id,
+                Some(MessageId(previous.original_message_id)),
+            )
+            .await?;
+    } else {
+        let jump_link = format!(
+            "[Jump Link](https://discordapp.com/channels/{}/{}/{})",
+            guild_id.0, previous.channel_id, previous.original_message_id
+        );
+        context.send_embed(message, jump_link, channel_id).await?;
+    }
+
     Ok(())
 }
 
@@ -229,7 +248,12 @@ fn save_image(
         .duration_since(std::time::UNIX_EPOCH)
         .expect("clocks are wobbly");
 
-    let properties = SeenImage::new(msg.author.name.clone(), now.as_secs(), msg.id.0);
+    let properties = SeenImage::new(
+        msg.author.name.clone(),
+        now.as_secs(),
+        msg.id.0,
+        msg.channel_id.0,
+    );
     let existing = context.data.record_image(&hash, properties)?;
     Ok(existing)
 }

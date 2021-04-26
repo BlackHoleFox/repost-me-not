@@ -330,15 +330,20 @@ pub struct SeenImage {
     ///
     /// This is the message that will be replied to when a repost occurs.
     pub original_message_id: u64,
+    /// ID of the channel that an image was seen in.
+    ///
+    /// Helps determine if a reply can be used or if a jumplink is needed.
+    pub channel_id: u64,
 }
 
 impl SeenImage {
-    pub fn new(author: String, sent: u64, original_message_id: u64) -> Self {
+    pub fn new(author: String, sent: u64, original_message_id: u64, channel_id: u64) -> Self {
         Self {
             ignored: false,
             author,
             sent,
             original_message_id,
+            channel_id,
         }
     }
 }
@@ -357,6 +362,7 @@ impl PartialEq<SeenImage> for ArchivedSeenImage {
             && self.author == other.author
             && self.sent == other.sent
             && self.original_message_id == other.original_message_id
+            && self.channel_id == other.channel_id
     }
 }
 
@@ -407,7 +413,7 @@ mod tests {
     fn store_and_fetch() {
         let db = Data::init("").unwrap();
 
-        let original = SeenImage::new("testing".to_string(), 773, 242343331);
+        let original = SeenImage::new("testing".to_string(), 773, 242343331, 238484343);
 
         let hash = ImageHash::from_bytes(&[1, 1, 1, 1, 1, 1, 1, 1]).unwrap();
         db.record_image(&hash, original.clone()).unwrap();
@@ -428,6 +434,7 @@ mod tests {
             "testing_but_looooooooooooonnnng".to_string(),
             26543654564,
             59849292,
+            3424324234,
         );
 
         let existing = db.record_image(&id, original.clone()).unwrap();
@@ -438,7 +445,7 @@ mod tests {
         let seen_count = db.seen_counts.get(&db_id).unwrap().unwrap();
         assert_eq!(Data::read_int(&seen_count), 1);
 
-        let newer = SeenImage::new("someone else".to_string(), 555555555, 4384834303);
+        let newer = SeenImage::new("someone else".to_string(), 555555555, 4384834303, 434343423);
 
         let old = db.record_image(&id, newer).unwrap();
 
@@ -463,11 +470,12 @@ mod tests {
             "testing_but_looooooooooooonnnng".to_string(),
             26543654564,
             59849292,
+            43434234342,
         );
 
         db.record_image(&id, original.clone()).unwrap();
 
-        let newer = SeenImage::new("someone else".to_string(), 555555555, 4384834303);
+        let newer = SeenImage::new("someone else".to_string(), 555555555, 4384834303, 323243434);
         let newer_id = ImageHash::from_bytes(&[1, 2, 3, 4, 5, 6, 7, 7]).unwrap();
 
         let old = db.record_image(&newer_id, newer).unwrap();

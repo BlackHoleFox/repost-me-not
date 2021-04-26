@@ -1,9 +1,11 @@
 use crate::data_storage::Data;
 use crate::errors::{DiscordInteractionError, Error};
 
+use chrono::Utc;
 use hyper::{body::HttpBody, client::HttpConnector, Client as HyperClient, Uri};
 use hyper_rustls::HttpsConnector;
 
+use twilight_embed_builder::{EmbedBuilder, EmbedFieldBuilder};
 use twilight_http::{request::prelude::RequestReactionType, Client};
 use twilight_model::{
     channel::{Message, ReactionType},
@@ -75,6 +77,33 @@ impl Context {
         }
 
         request
+            .await
+            .map_err(DiscordInteractionError::SendingMessage)
+    }
+
+    pub async fn send_embed(
+        &self,
+        description: String,
+        jump_link: String,
+        channel_id: ChannelId,
+    ) -> Result<Message, DiscordInteractionError> {
+        let embed = EmbedBuilder::new()
+            .timestamp(Utc::now().to_rfc3339())
+            .field(
+                EmbedFieldBuilder::new("Previous Image", jump_link)
+                    .expect("bug: embed field had the wrong params")
+                    .inline()
+                    .build(),
+            )
+            .build()
+            .expect("bug: embed had too many contents");
+
+        self.discord_client
+            .create_message(channel_id)
+            .content(description)
+            .expect("bug: message context was > 2000")
+            .embed(embed)
+            .expect("bug: embed content was > 6000")
             .await
             .map_err(DiscordInteractionError::SendingMessage)
     }
