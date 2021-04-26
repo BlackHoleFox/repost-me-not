@@ -191,12 +191,12 @@ async fn dispatch_repost_reply(
         .expect("clocks are wobbly");
     let difference = now - std::time::Duration::from_secs(previous.sent);
 
-    let hours_ago = difference.as_secs() / 3600;
+    let since = time_since(difference.as_secs());
 
     let message = format!(
-        "Hey, {} already posted that here {} hours ago. I've seen it {} times now. Try harder next time <:niko:765033287357431829>", 
+        "Hey, {} already posted that here {}. I've seen it {} times now. Try harder next time <:niko:765033287357431829>", 
         previous.author,
-        hours_ago,
+        since,
         times_seen
     );
 
@@ -218,6 +218,28 @@ async fn dispatch_repost_reply(
     }
 
     Ok(())
+}
+
+fn time_since(seconds: u64) -> String {
+    let days = seconds / 86400;
+
+    if days > 0 {
+        return format!("{} days ago", days);
+    }
+
+    let hours = seconds / 3600;
+
+    if hours > 0 {
+        return format!("{} hours ago", hours);
+    }
+
+    let minutes = seconds / 60;
+
+    if minutes > 0 {
+        return format!("{} minutes ago", minutes);
+    }
+
+    format!("{} seconds ago", seconds)
 }
 
 fn image_from_message(msg: &Message) -> Option<&str> {
@@ -405,6 +427,20 @@ mod tests {
 
         for msg in cases {
             assert!(image_from_message(msg).is_some())
+        }
+    }
+
+    const TIME_SINCE_CASES: &[(u64, &str)] = &[
+        (24, "seconds"),
+        (322, "minutes"),
+        (4343, "hours"),
+        (20030303, "days"),
+    ];
+
+    #[test]
+    fn time_since_messages() {
+        for (case, expected) in TIME_SINCE_CASES {
+            assert!(time_since(*case).contains(expected))
         }
     }
 }
