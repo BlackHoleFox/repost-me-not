@@ -3,6 +3,7 @@ pub enum Error {
     Database(DatabaseError),
     InteractionError(DiscordInteractionError),
     DownloadingConent(hyper::Error),
+    ContentTooLarge,
     UnsupportedChannelConfig,
     UnsupportedImageFormat(image::error::ImageError),
 }

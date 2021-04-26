@@ -125,8 +125,8 @@ impl Context {
                 check_emote_name_for_confirmation(&event.emoji).is_some()
             });
 
-        let confirmation = match tokio::time::timeout(Duration::from_secs(10), fut).await {
-            Ok(Ok(reaction)) => reaction,
+        match tokio::time::timeout(Duration::from_secs(10), fut).await {
+            Ok(Ok(_)) => Ok(true),
             Ok(_) => {
                 unreachable!("bug: standby (and context?) was dropped while waiting for reaction")
             }
@@ -136,9 +136,7 @@ impl Context {
 
                 return Ok(false);
             }
-        };
-
-        Ok(check_emote_name_for_confirmation(&confirmation.emoji).unwrap_or(false))
+        }
     }
 
     pub async fn download_image(&self, url: &str) -> Result<Vec<u8>, Error> {
@@ -150,10 +148,7 @@ impl Context {
             .exact()
             .unwrap_or_else(|| response.size_hint().lower());
 
-        let mut image = Vec::with_capacity(
-            size.try_into()
-                .expect("tried downloading a file too large to allocate"),
-        );
+        let mut image = Vec::with_capacity(size.try_into().map_err(|_| Error::ContentTooLarge)?);
 
         let mut body = response.into_body();
         while let Some(bytes) = body.data().await {
@@ -172,11 +167,11 @@ fn check_emote_name_for_confirmation(emote: &ReactionType) -> Option<bool> {
         _ => return None,
     };
 
-    let check = match name {
-        name if name == ConfirmationAction::CONFIRMED => true,
+    let check = match &**name {
+        ConfirmationAction::CONFIRMED => true,
+        ConfirmationAction::CANCELED => false,
         name if name.contains("yes") => true,
         name if name.contains("Yes") => true,
-        name if name == ConfirmationAction::CANCELED => false,
         // "no" seems like it would have more false positives with .contains().
         name if name.starts_with("no") => false,
         name if name.starts_with("No") => false,

@@ -22,13 +22,13 @@ pub fn process_image(image: Vec<u8>) -> Result<ImageHash, Error> {
         .decode()
         .map_err(Error::UnsupportedImageFormat)?;
 
-    println!(
+    tracing::trace!(
         "It took {}ms to decode the image",
         start.elapsed().as_millis()
     );
     let start = std::time::Instant::now();
     let hash = hasher.hash_image(&image);
-    println!(
+    tracing::trace!(
         "It took {}ms to hash the image",
         start.elapsed().as_millis()
     );
@@ -44,12 +44,12 @@ pub fn similar_enough(new: &ImageHash, seen: &[u8]) -> bool {
 
     let start = std::time::Instant::now();
     let dist = new.dist(&seen);
-    println!(
+    tracing::trace!(
         "It took {}ms to compare a hash distance",
         start.elapsed().as_millis()
     );
 
-    println!("Distance was {}", dist);
+    tracing::debug!("Distance was {}", dist);
 
     dist <= DIFFERENCE_THRESHOLD
 }

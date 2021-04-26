@@ -1,6 +1,8 @@
 mod bot;
 mod data_storage;
 mod errors;
+use std::borrow::Cow;
+
 pub use errors::Error;
 mod image_processing;
 
@@ -11,6 +13,7 @@ use hyper_rustls::HttpsConnector;
 
 use tokio_stream::StreamExt;
 
+use tracing_subscriber::{EnvFilter, FmtSubscriber};
 use twilight_gateway::{
     cluster::{Cluster, ShardScheme},
     Event,
@@ -27,8 +30,16 @@ use twilight_model::{
 
 #[tokio::main]
 async fn main() {
-    println!("Booting!");
     dotenv::dotenv().ok();
+
+    tracing::subscriber::set_global_default(
+        FmtSubscriber::builder()
+            .with_env_filter(EnvFilter::from_default_env())
+            .finish(),
+    )
+    .unwrap();
+
+    tracing::info!("Booting!");
 
     let token = std::env::var("DISCORD_TOKEN").expect("no discord token present");
 
@@ -41,7 +52,7 @@ async fn main() {
         .token(&token)
         .build();
 
-    println!("Initalizing database...");
+    tracing::info!("Initalizing database...");
     let data = Data::init("./storage").unwrap();
 
     let me = client.current_user().await.unwrap();
@@ -62,7 +73,7 @@ async fn main() {
         spawner.up().await;
     });
 
-    println!("Cluster is running...");
+    tracing::info!("Cluster is running...");
 
     let mut incoming_events = cluster.events();
     while let Some((_shard_id, event)) = incoming_events.next().await {
@@ -94,7 +105,6 @@ async fn handle_message(message: Box<MessageCreate>, context: bot::Context) -> R
     if message
         .mentions
         .first()
-        .filter(|m| context.is_me(m.id))
         .or_else(|| message.mentions.get(1))
         .filter(|m| context.is_me(m.id))
         .is_none()
@@ -110,26 +120,23 @@ async fn handle_message(message: Box<MessageCreate>, context: bot::Context) -> R
         // Support two behaviors for ignoring stuff:
         // 1. Reply on the message containing the image itself
         // 2. Reply to our reply notifying users of a repost.
-        let image_to_ignore = match if let Some(parent) = &msg.reference {
-            // TODO: Run these through a cache
-            let msg_with_image = context
-                .get_message(
-                    parent.channel_id.ok_or(Error::UnsupportedChannelConfig)?,
-                    parent.message_id.ok_or(Error::UnsupportedChannelConfig)?,
-                )
-                .await?;
 
-            match image_from_message(&msg_with_image) {
-                Some(url) => Some(context.download_image(url).await?),
-                None => None,
-            }
+        let msg_with_img = if let Some(parent) = &msg.reference {
+            // TODO: Run these through a cache
+            Cow::Owned(
+                context
+                    .get_message(
+                        parent.channel_id.ok_or(Error::UnsupportedChannelConfig)?,
+                        parent.message_id.ok_or(Error::UnsupportedChannelConfig)?,
+                    )
+                    .await?,
+            )
         } else {
-            match image_from_message(&msg) {
-                Some(url) => Some(context.download_image(url).await?),
-                None => None,
-            }
-        } {
-            Some(img) => img,
+            Cow::Borrowed(&**message)
+        };
+
+        let image_to_ignore = match image_from_message(&msg_with_img) {
+            Some(url) => context.download_image(url).await?,
             None => return Ok(()),
         };
 
@@ -138,7 +145,7 @@ async fn handle_message(message: Box<MessageCreate>, context: bot::Context) -> R
             .await
         {
             Ok(confirmed) => {
-                println!("User confirmed: {}", confirmed);
+                tracing::debug!("User confirmed: {}", confirmed);
 
                 if confirmed {
                     let image_hash = image_processing::process_image(image_to_ignore)?;
@@ -183,6 +190,7 @@ async fn dispatch_repost_reply(
         hours_ago,
         times_seen,
     );
+
     context
         .send_message(
             reply,
@@ -196,13 +204,13 @@ async fn dispatch_repost_reply(
 fn image_from_message(msg: &Message) -> Option<&str> {
     for embed in &msg.embeds {
         if let Some(img_url) = filter_embed(embed) {
-            println!("Embed image found: {:?}", img_url);
+            tracing::debug!("Embed image found: {:?}", img_url);
             return Some(img_url);
         }
     }
 
     if let Some(url) = msg.attachments.iter().find_map(|a| filter_image(&a.url)) {
-        println!("Image attachment found: {}", url);
+        tracing::debug!("Image attachment found: {}", url);
         return Some(url);
     }
 
@@ -215,7 +223,7 @@ fn save_image(
     msg: &Message,
 ) -> Result<PreviouslySeen, Error> {
     let hash = image_processing::process_image(image)?;
-    println!("Image hash was {:0x?}", hash.as_bytes());
+    tracing::debug!("Image hash was {:0x?}", hash.as_bytes());
 
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -245,8 +253,7 @@ fn filter_image(url: &str) -> Option<&str> {
         extension = extension.split(*to_clean).next()?;
     }
 
-    for ext in SUPPORTED_EXTENSIONS.iter().copied() {
-        println!("Comparing {} to {}", ext, extension);
+    for ext in SUPPORTED_EXTENSIONS.iter() {
         if ext.eq_ignore_ascii_case(extension) {
             return Some(url);
         }
