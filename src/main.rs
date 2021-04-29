@@ -82,6 +82,11 @@ async fn main() {
         // TODO: actually handle MessageUpdate events to catch more images
         let context = context.clone();
         if let Event::MessageCreate(msg) = event {
+            // Maybe someone has an image bot! Imagine that.
+            if msg.author.bot {
+                continue;
+            }
+
             tokio::spawn(async move {
                 if let Err(e) = handle_message(msg, context).await {
                     tracing::error!("Error handling a message: {:?}", e);
@@ -224,22 +229,30 @@ fn time_since(seconds: u64) -> String {
     let days = seconds / 86400;
 
     if days > 0 {
-        return format!("{} days ago", days);
+        let unit = if days > 1 { "days" } else { "day" };
+
+        return format!("{} {} ago", days, unit);
     }
 
     let hours = seconds / 3600;
 
     if hours > 0 {
-        return format!("{} hours ago", hours);
+        let unit = if hours > 1 { "hours" } else { "hour" };
+
+        return format!("{} {} ago", hours, unit);
     }
 
     let minutes = seconds / 60;
 
     if minutes > 0 {
-        return format!("{} minutes ago", minutes);
+        let unit = if minutes > 1 { "minutes" } else { "minute" };
+
+        return format!("{} {} ago", minutes, unit);
     }
 
-    format!("{} seconds ago", seconds)
+    let unit = if seconds > 1 { "seconds" } else { "second" };
+
+    format!("{} {} ago", seconds, unit)
 }
 
 fn image_from_message(msg: &Message) -> Option<&str> {
@@ -432,15 +445,22 @@ mod tests {
 
     const TIME_SINCE_CASES: &[(u64, &str)] = &[
         (24, "seconds"),
+        (1, "second"),
+        (60, "minute"),
         (322, "minutes"),
-        (4343, "hours"),
+        (3900, "hour"),
+        (8000, "hours"),
+        (86454, "day"),
         (20030303, "days"),
     ];
 
     #[test]
     fn time_since_messages() {
         for (case, expected) in TIME_SINCE_CASES {
-            assert!(time_since(*case).contains(expected))
+            assert_eq!(
+                time_since(*case).split_whitespace().nth(1).unwrap(),
+                *expected
+            )
         }
     }
 }
