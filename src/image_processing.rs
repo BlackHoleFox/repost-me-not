@@ -7,12 +7,11 @@ use std::io::Cursor;
 type HashStorage = [u8; 8];
 pub type ImageHash = img_hash::ImageHash<HashStorage>;
 
-const DIFFERENCE_THRESHOLD: u32 = 7;
+const DIFFERENCE_THRESHOLD: u32 = 8;
 
 pub fn process_image(image: Vec<u8>) -> Result<ImageHash, Error> {
     let hasher = HasherConfig::with_bytes_type::<HashStorage>()
-        .hash_alg(HashAlg::DoubleGradient)
-        .preproc_dct()
+        .hash_alg(HashAlg::Blockhash)
         .to_hasher();
 
     let start = std::time::Instant::now();
@@ -52,4 +51,87 @@ pub fn similar_enough(new: &ImageHash, seen: &[u8]) -> bool {
     tracing::debug!("Distance was {}", dist);
 
     dist <= DIFFERENCE_THRESHOLD
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn set_logger() {
+        let _ = tracing::subscriber::set_global_default(
+            tracing_subscriber::FmtSubscriber::builder()
+                .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+                .finish(),
+        );
+    }
+
+    // TODO: collect appropriate licensed images to use for false positive
+    // checking then un-`#[ignore]` this test
+    #[test]
+    #[ignore]
+    fn false_positives() -> Result<(), Box<dyn std::error::Error>> {
+        set_logger();
+
+        for directory in std::fs::read_dir("false_positives")? {
+            let directory = directory?;
+
+            let (h1, h2) = {
+                let entries = std::fs::read_dir(directory.path())?.try_fold(
+                    Vec::new(),
+                    |mut v, f| -> std::io::Result<_> {
+                        v.push(std::fs::read(f?.path())?);
+                        Ok(v)
+                    },
+                )?;
+
+                (
+                    process_image(entries[0].clone()).unwrap(),
+                    process_image(entries[1].clone()).unwrap(),
+                )
+            };
+
+            assert!(
+                !similar_enough(&h1, h2.as_bytes()),
+                "false positive found in directory {}",
+                directory.path().display()
+            );
+        }
+
+        Ok(())
+    }
+
+    // TODO: collect appropriate licensed images to use for true positive
+    // checking then un-`#[ignore]` this test
+    #[test]
+    #[ignore]
+    fn true_positives() -> Result<(), Box<dyn std::error::Error>> {
+        set_logger();
+
+        for directory in std::fs::read_dir("true_positives")? {
+            let directory = directory?;
+
+            let (h1, h2) = {
+                let entries = std::fs::read_dir(directory.path())?.try_fold(
+                    Vec::new(),
+                    |mut v, f| -> std::io::Result<_> {
+                        v.push(std::fs::read(f?.path())?);
+                        Ok(v)
+                    },
+                )?;
+
+                (
+                    process_image(entries[0].clone()).unwrap(),
+                    process_image(entries[1].clone()).unwrap(),
+                )
+            };
+
+            assert!(
+                similar_enough(&h1, h2.as_bytes()),
+                "did not detect a duplicate in directory {}",
+                directory.path().display()
+            );
+        }
+
+        Ok(())
+    }
 }

@@ -8,3 +8,7 @@ storage/
 
 # Misc
 Notes.txt
+
+# Test images
+false_positives/
+true_positives/
