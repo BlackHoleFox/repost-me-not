@@ -9,7 +9,7 @@ license = "MIT OR Apache-2.0"
 
 [dependencies]
 image = { version = "0.23", default-features = false, features = ["png", "jpeg", "gif", "webp"] }
-img_hash = { git = "https://github.com/BlackHoleFox/img_hash.git", branch = "from-bytes-no-base64" }
+img_hash = "3.2"
 dotenv = { version = "0.15", default-features = false }
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 

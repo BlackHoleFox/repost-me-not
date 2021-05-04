@@ -45,12 +45,6 @@ checksum = "cdb031dd78e28731d87d56cc8ffef4a8f36ca26c38fe2de700543e627f8a464a"
 
 [[package]]
 name = "base64"
-version = "0.11.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b41b7ea54a0c9d92199de89e20e58d49f02f8e699814ef3fdf266f6f748d15c7"
-
-[[package]]
-name = "base64"
 version = "0.12.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3441f0f7b02788e948e47f457ca01f1d7e6d92c693bc132c22b087d3141c03ff"
@@ -564,10 +558,11 @@ dependencies = [
 
 [[package]]
 name = "img_hash"
-version = "3.1.0"
-source = "git+https://github.com/BlackHoleFox/img_hash.git?branch=from-bytes-no-base64#e1461ac861e44a3c7708650ff3176f93dbfe0e04"
+version = "3.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5ea4eac6fc4f64ed363d5c210732b747bfa5ddd8a25ac347d887f298c3a70b49"
 dependencies = [
- "base64 0.11.0",
+ "base64 0.13.0",
  "image",
  "rustdct",
  "serde",
