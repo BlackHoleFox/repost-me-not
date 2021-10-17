@@ -6,10 +6,10 @@ use crate::errors::{DatabaseError, Error};
 #[cfg(test)]
 use bytecheck::CheckBytes;
 #[cfg(test)]
-use rkyv::validation::DefaultArchiveValidator;
+use rkyv::validation::validators::DefaultValidator;
 
 use rkyv::{
-    de::deserializers::AllocDeserializer,
+    de::deserializers::SharedDeserializeMap,
     ser::{serializers::WriteSerializer, Serializer},
     Archive, Deserialize, Serialize,
 };
@@ -144,12 +144,12 @@ impl Data {
 
     // Ensure that the buffers used are correct
     #[cfg(test)]
-    fn read_archived<T: Archive>(buf: &[u8]) -> &T::Archived
+    fn read_archived<'a, T: Archive>(buf: &'a [u8]) -> &'a T::Archived
     where
-        T::Archived: CheckBytes<DefaultArchiveValidator>,
+        T::Archived: CheckBytes<DefaultValidator<'a>>,
     {
-        rkyv::validation::check_archived_root::<T>(buf)
-            .expect("bad bug: image record had invalid bufer")
+        rkyv::validation::validators::check_archived_root::<T>(buf)
+            .expect("bad bug: image record had invalid buffer")
     }
 
     #[cfg(not(test))]
@@ -192,7 +192,7 @@ impl Data {
                 .expect("bug: database ID pointed at dead image");
 
             let start = std::time::Instant::now();
-            let mut deserializer = AllocDeserializer;
+            let mut deserializer = SharedDeserializeMap::new();
             let image = Self::read_archived::<SeenImage>(&old);
             let image = image
                 .deserialize(&mut deserializer)
@@ -218,7 +218,7 @@ impl Data {
                     .seen_counts
                     .update_and_fetch(&id, |old_count| {
                         let mut new =
-                            Self::read_int(&old_count.expect("bug: image existed but hash didn't"));
+                            Self::read_int(old_count.expect("bug: image existed but hash didn't"));
                         new += 1;
 
                         Some(IVec::from(&new.to_ne_bytes()))
@@ -240,7 +240,7 @@ impl Data {
                     .map_err(DatabaseError::Recording)?;
 
                 let start = std::time::Instant::now();
-                let mut deserializer = AllocDeserializer;
+                let mut deserializer = SharedDeserializeMap::new();
                 let image = Self::read_archived::<SeenImage>(&old);
                 let image = image
                     .deserialize(&mut deserializer)
@@ -316,7 +316,11 @@ impl Data {
 }
 
 #[derive(Debug, Archive, Deserialize, Serialize)]
-#[cfg_attr(test, derive(Clone, PartialEq), archive(derive(CheckBytes, Debug)))]
+#[cfg_attr(
+    test,
+    derive(Clone, PartialEq),
+    archive_attr(derive(CheckBytes, Debug))
+)]
 pub struct SeenImage {
     /// Is this image ignored from repost checking.
     pub ignored: bool,

@@ -4,7 +4,7 @@ use image::io::Reader;
 use img_hash::{HashAlg, HasherConfig};
 use std::io::Cursor;
 
-type HashStorage = [u8; 8];
+type HashStorage = [u8; 64];
 pub type ImageHash = img_hash::ImageHash<HashStorage>;
 
 const DIFFERENCE_THRESHOLD: u32 = 8;

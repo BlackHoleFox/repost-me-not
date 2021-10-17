@@ -18,11 +18,11 @@ use twilight_gateway::{
     cluster::{Cluster, ShardScheme},
     Event,
 };
-use twilight_http::{request::channel::allowed_mentions::AllowedMentions, Client};
+use twilight_http::Client;
 use twilight_model::{
     channel::{
         embed::{Embed, EmbedImage},
-        message::Message,
+        message::{AllowedMentions, Message},
     },
     gateway::{payload::MessageCreate, Intents},
     id::{ChannelId, GuildId, MessageId},
@@ -47,19 +47,26 @@ async fn main() {
         HyperClient::builder().build::<_, hyper::Body>(HttpsConnector::with_native_roots());
 
     let client = Client::builder()
-        .hyper_client(web_client.clone())
         .default_allowed_mentions(AllowedMentions::default())
-        .token(&token)
+        .token(token.clone())
         .build();
 
     tracing::info!("Initalizing database...");
     let data = Data::init("./storage").unwrap();
 
-    let me = client.current_user().await.unwrap();
+    let me = client.current_user().exec().await.unwrap();
 
-    let context = bot::Context::init(me.id, data, web_client, client);
+    let context = bot::Context::init(
+        me.model()
+            .await
+            .expect("current user deserialize failed")
+            .id,
+        data,
+        web_client,
+        client,
+    );
 
-    let cluster = Cluster::builder(
+    let (cluster, mut incoming_events) = Cluster::builder(
         token,
         Intents::GUILD_MESSAGES | Intents::GUILD_MESSAGE_REACTIONS,
     )
@@ -68,14 +75,10 @@ async fn main() {
     .await
     .expect("failed to init cluster");
 
-    let spawner = cluster.clone();
-    tokio::spawn(async move {
-        spawner.up().await;
-    });
+    cluster.up().await;
 
     tracing::info!("Cluster is running...");
 
-    let mut incoming_events = cluster.events();
     while let Some((_shard_id, event)) = incoming_events.next().await {
         context.standby.process(&event);
 
@@ -350,6 +353,8 @@ mod tests {
         public_flags: None,
         system: None,
         verified: None,
+        accent_color: None,
+        banner: None,
     };
 
     #[test]
@@ -382,10 +387,14 @@ mod tests {
             reactions: Vec::new(),
             reference: None,
             referenced_message: None,
-            stickers: Vec::new(),
+            sticker_items: Vec::new(),
             timestamp: String::new(),
             tts: false,
             webhook_id: None,
+            application_id: None,
+            components: Vec::new(),
+            interaction: None,
+            thread: None,
         }
     }
 
