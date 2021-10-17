@@ -60,7 +60,7 @@ impl Context {
         self.id == other
     }
 
-    pub async fn send_message<M: Into<String>>(
+    pub async fn send_message<M: AsRef<str>>(
         &self,
         message: M,
         channel: ChannelId,
@@ -69,7 +69,7 @@ impl Context {
         let mut request = self
             .discord_client
             .create_message(channel)
-            .content(message)
+            .content(message.as_ref())
             .expect("bug: message content was > 2000");
 
         if let Some(reply_to) = reply {
@@ -77,8 +77,12 @@ impl Context {
         }
 
         request
+            .exec()
             .await
-            .map_err(DiscordInteractionError::SendingMessage)
+            .map_err(DiscordInteractionError::SendingMessage)?
+            .model()
+            .await
+            .map_err(DiscordInteractionError::Deserialize)
     }
 
     pub async fn send_embed(
@@ -91,7 +95,6 @@ impl Context {
             .timestamp(Utc::now().to_rfc3339())
             .field(
                 EmbedFieldBuilder::new("Previous Image", jump_link)
-                    .expect("bug: embed field had the wrong params")
                     .inline()
                     .build(),
             )
@@ -100,12 +103,16 @@ impl Context {
 
         self.discord_client
             .create_message(channel_id)
-            .content(description)
+            .content(&description)
             .expect("bug: message context was > 2000")
-            .embed(embed)
+            .embeds(&[embed])
             .expect("bug: embed content was > 6000")
+            .exec()
             .await
-            .map_err(DiscordInteractionError::SendingMessage)
+            .map_err(DiscordInteractionError::SendingMessage)?
+            .model()
+            .await
+            .map_err(DiscordInteractionError::Deserialize)
     }
 
     pub async fn get_message(
@@ -115,9 +122,12 @@ impl Context {
     ) -> Result<Message, DiscordInteractionError> {
         self.discord_client
             .message(channel, message)
+            .exec()
             .await
             .map_err(DiscordInteractionError::FetchingMessage)?
-            .ok_or(DiscordInteractionError::MessageNotFound)
+            .model()
+            .await
+            .map_err(DiscordInteractionError::Deserialize)
     }
 
     pub async fn confirm_action(
@@ -128,18 +138,20 @@ impl Context {
         let msg = self.send_message(action.as_str(), channel, None).await?;
 
         let reaction = RequestReactionType::Unicode {
-            name: ConfirmationAction::CONFIRMED.to_string(),
+            name: ConfirmationAction::CONFIRMED,
         };
         self.discord_client
-            .create_reaction(channel, msg.id, reaction)
+            .create_reaction(channel, msg.id, &reaction)
+            .exec()
             .await
             .map_err(DiscordInteractionError::ReactionHandling)?;
 
         let reaction = RequestReactionType::Unicode {
-            name: ConfirmationAction::CANCELED.to_string(),
+            name: ConfirmationAction::CANCELED,
         };
         self.discord_client
-            .create_reaction(channel, msg.id, reaction)
+            .create_reaction(channel, msg.id, &reaction)
+            .exec()
             .await
             .map_err(DiscordInteractionError::ReactionHandling)?;
 
@@ -163,7 +175,7 @@ impl Context {
                 self.send_message(ConfirmationAction::TIMED_OUT, channel, None)
                     .await?;
 
-                return Ok(false);
+                Ok(false)
             }
         }
     }
