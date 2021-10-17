@@ -169,7 +169,7 @@ impl Data {
             .get(image_hash.as_bytes())
             .map_err(DatabaseError::Recording)?
         {
-            // If we do, increment and return the tiems its been seen
+            // If we do, increment and return the times its been seen
             let times_seen =
                 self.seen_counts
                     .update_and_fetch(&id_of_existing, |old| {
@@ -312,6 +312,10 @@ impl Data {
         }
 
         Ok(())
+    }
+
+    pub fn total_seen(&self) -> usize {
+        self.stored_images.len()
     }
 }
 

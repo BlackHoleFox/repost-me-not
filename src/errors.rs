@@ -32,6 +32,7 @@ pub enum DiscordInteractionError {
     FetchingMessage(twilight_http::Error),
     ReactionHandling(twilight_http::Error),
     Deserialize(twilight_http::response::DeserializeBodyError),
+    FailedToChangeStatus(twilight_gateway::cluster::ClusterCommandError),
     MessageNotFound,
 }
 

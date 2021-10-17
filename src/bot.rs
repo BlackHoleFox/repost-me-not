@@ -6,15 +6,28 @@ use hyper::{body::HttpBody, client::HttpConnector, Client as HyperClient, Uri};
 use hyper_rustls::HttpsConnector;
 
 use twilight_embed_builder::{EmbedBuilder, EmbedFieldBuilder};
+use twilight_gateway::Cluster;
 use twilight_http::{request::prelude::RequestReactionType, Client};
+use twilight_model::gateway::payload::UpdatePresence;
 use twilight_model::{
     channel::{Message, ReactionType},
-    gateway::payload::ReactionAdd,
+    gateway::{
+        payload::ReactionAdd,
+        presence::{ActivityType, MinimalActivity, Status},
+    },
     id::{ChannelId, MessageId, UserId},
 };
 use twilight_standby::Standby;
 
-use std::{convert::TryInto, str::FromStr, time::Duration};
+use std::{
+    convert::TryInto,
+    str::FromStr,
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc,
+    },
+    time::Duration,
+};
 
 type WebClient = HyperClient<HttpsConnector<HttpConnector>>;
 
@@ -39,21 +52,45 @@ pub struct Context {
     pub data: Data,
     web_client: WebClient,
     discord_client: Client,
+    cluster: Cluster,
     pub standby: Standby,
     id: UserId,
+    total_seen: Arc<AtomicUsize>,
 }
 
 impl Context {
-    pub fn init(me: UserId, data: Data, web_client: WebClient, discord_client: Client) -> Self {
+    pub fn init(
+        me: UserId,
+        data: Data,
+        web_client: WebClient,
+        discord_client: Client,
+        cluster: Cluster,
+    ) -> Self {
         let standby = Standby::new();
+        let seen_so_far = data.total_seen();
 
         Self {
             data,
             web_client,
             discord_client,
+            cluster,
             standby,
             id: me,
+            total_seen: Arc::new(AtomicUsize::new(seen_so_far)),
         }
+    }
+
+    /// Marks that the bot saw a repost.
+    ///
+    /// Returns the *new* number of posts seen.
+    pub fn repost_seen(&self) -> usize {
+        let old = self.total_seen.fetch_add(1, Ordering::Relaxed);
+        old + 1
+    }
+
+    /// Returns the *current* number of unique reposts the bot has seen.
+    pub fn total_seen(&self) -> usize {
+        self.total_seen.load(Ordering::Relaxed)
     }
 
     pub fn is_me(&self, other: UserId) -> bool {
@@ -199,6 +236,31 @@ impl Context {
 
         Ok(image)
     }
+
+    pub async fn change_status(
+        &self,
+        destination_shard: u64,
+        message: String,
+        status: Status,
+    ) -> Result<(), Error> {
+        self.cluster
+            .command(destination_shard, &presence_builder(message, status))
+            .await
+            .map_err(DiscordInteractionError::FailedToChangeStatus)?;
+
+        Ok(())
+    }
+}
+
+pub fn presence_builder(message: String, status: Status) -> UpdatePresence {
+    let activity = MinimalActivity {
+        kind: ActivityType::Watching,
+        name: message,
+        url: None,
+    }
+    .into();
+
+    UpdatePresence::new(vec![activity], false, None, status).unwrap()
 }
 
 fn check_emote_name_for_confirmation(emote: &ReactionType) -> Option<bool> {

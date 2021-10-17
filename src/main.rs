@@ -24,7 +24,7 @@ use twilight_model::{
         embed::{Embed, EmbedImage},
         message::{AllowedMentions, Message},
     },
-    gateway::{payload::MessageCreate, Intents},
+    gateway::{payload::MessageCreate, presence::Status, Intents},
     id::{ChannelId, GuildId, MessageId},
 };
 
@@ -53,8 +53,23 @@ async fn main() {
 
     tracing::info!("Initalizing database...");
     let data = Data::init("./storage").unwrap();
+    let current_total_seen = data.total_seen();
 
     let me = client.current_user().exec().await.unwrap();
+
+    let (cluster, mut incoming_events) = Cluster::builder(
+        token,
+        Intents::GUILD_MESSAGES | Intents::GUILD_MESSAGE_REACTIONS,
+    )
+    .shard_scheme(ShardScheme::Auto)
+    .presence(bot::presence_builder(status_message(current_total_seen), Status::Offline).d)
+    .build()
+    .await
+    .expect("failed to init cluster");
+
+    cluster.up().await;
+
+    tracing::info!("Cluster is running...");
 
     let context = bot::Context::init(
         me.model()
@@ -64,34 +79,23 @@ async fn main() {
         data,
         web_client,
         client,
+        cluster,
     );
 
-    let (cluster, mut incoming_events) = Cluster::builder(
-        token,
-        Intents::GUILD_MESSAGES | Intents::GUILD_MESSAGE_REACTIONS,
-    )
-    .shard_scheme(ShardScheme::Auto)
-    .build()
-    .await
-    .expect("failed to init cluster");
-
-    cluster.up().await;
-
-    tracing::info!("Cluster is running...");
-
-    while let Some((_shard_id, event)) = incoming_events.next().await {
+    while let Some((shard_id, event)) = incoming_events.next().await {
         context.standby.process(&event);
 
         // TODO: actually handle MessageUpdate events to catch more images
-        let context = context.clone();
         if let Event::MessageCreate(msg) = event {
+            let context = context.clone();
+
             // Maybe someone has an image bot! Imagine that.
             if msg.author.bot {
                 continue;
             }
 
             tokio::spawn(async move {
-                if let Err(e) = handle_message(msg, context).await {
+                if let Err(e) = handle_message(shard_id, msg, context).await {
                     tracing::error!("Error handling a message: {:?}", e);
                 }
             });
@@ -99,7 +103,11 @@ async fn main() {
     }
 }
 
-async fn handle_message(message: Box<MessageCreate>, context: bot::Context) -> Result<(), Error> {
+async fn handle_message(
+    shard_id: u64,
+    message: Box<MessageCreate>,
+    context: bot::Context,
+) -> Result<(), Error> {
     if let Some(url) = image_from_message(&message) {
         let image = context.download_image(url).await?;
         if let PreviouslySeen::Yes { image, times_seen } = save_image(&context, image, &message)? {
@@ -112,6 +120,23 @@ async fn handle_message(message: Box<MessageCreate>, context: bot::Context) -> R
                     message.guild_id.ok_or(Error::UnsupportedChannelConfig)?,
                 )
                 .await?;
+
+                let total_seen = if times_seen == 2 {
+                    // If its the first of a repost variant, increment our counter for the presence message
+                    context.repost_seen()
+                } else {
+                    context.total_seen()
+                };
+
+                let status_message = status_message(total_seen);
+
+                if let Err(e) = context
+                    .change_status(shard_id, status_message, Status::Online)
+                    .await
+                {
+                    tracing::error!("Failed to update status after a repost: {:?}", e)
+                }
+
                 return Ok(());
             }
         }
@@ -226,6 +251,14 @@ async fn dispatch_repost_reply(
     }
 
     Ok(())
+}
+
+fn status_message(reposts_seen: usize) -> String {
+    match reposts_seen {
+        0 => "for a repost to appear".to_string(),
+        1 => "out for 1 repost".to_string(),
+        _ => format!("out for {} reposts", reposts_seen),
+    }
 }
 
 fn time_since(seconds: u64) -> String {
