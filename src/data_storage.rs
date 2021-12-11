@@ -299,6 +299,7 @@ impl Data {
             let needs_modified = {
                 let buffer = Pin::new(buf.as_mut());
 
+                // SAFETY: We know we're pulling out of the images table, which are the right type, and this is tested.
                 let archived = unsafe { rkyv::archived_root_mut::<SeenImage>(buffer) };
 
                 f(archived)

@@ -190,8 +190,7 @@ async fn handle_message(
                 if confirmed {
                     let image_hash = image_processing::process_image(image_to_ignore)?;
                     context.data.access_image(image_hash.as_bytes(), |seen| {
-                        // SAFETY: No data is moved out of `seen`, only written to.
-                        *(unsafe { &mut seen.get_unchecked_mut().ignored }) = true;
+                        seen.get_mut().ignored = true;
                         true
                     })?;
                 }
